@@ -1,0 +1,15 @@
+# Environment variables (Sensitive credentials)
+.env
+
+# SQLite local databases
+*.db
+campusfix.db
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS artifacts
+.DS_Store
+Thumbs.db
