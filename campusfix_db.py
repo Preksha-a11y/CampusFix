@@ -5,6 +5,7 @@ Core Database Layer (campusfix_db.py)
 Dual-Backend Engine:
 - PostgreSQL + pgvector (Production / Supabase Live Cloud)
 - SQLite (Local Offline Zero-Dependency Fallback)
+Includes robust connection retries, auto-reconnect, and error handling.
 """
 
 import os
@@ -13,9 +14,10 @@ import json
 import math
 import hashlib
 import re
+import time
 from datetime import datetime
 
-# Load environment variable
+# Load environment variables
 ENV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 DATABASE_URL = None
 if os.path.exists(ENV_FILE):
@@ -25,32 +27,77 @@ if os.path.exists(ENV_FILE):
             if line.startswith("DATABASE_URL="):
                 DATABASE_URL = line.split("=", 1)[1].strip()
 
-# Try loading psycopg2
 USE_POSTGRES = False
-if DATABASE_URL:
-    try:
-        import psycopg2
-        import psycopg2.extras
-        _test_conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
-        _test_conn.close()
-        USE_POSTGRES = True
-    except Exception:
-        USE_POSTGRES = False
-
 DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "campusfix.db")
 
+# Connection cache for Supabase to avoid frequent reconnects
+_active_pg_conn = None
 
-def get_connection():
+
+def test_postgres_connection():
+    global USE_POSTGRES
+    if not DATABASE_URL:
+        USE_POSTGRES = False
+        return False
+    try:
+        import psycopg2
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=8)
+        conn.close()
+        USE_POSTGRES = True
+        return True
+    except Exception:
+        USE_POSTGRES = False
+        return False
+
+
+test_postgres_connection()
+
+
+def get_connection(retries=2, retry_delay=1.5):
+    """
+    Returns an active database connection.
+    Implements automatic retries for cloud network hiccups.
+    """
+    global USE_POSTGRES, _active_pg_conn
+
     if USE_POSTGRES:
-        conn = psycopg2.connect(DATABASE_URL)
-        conn.autocommit = True
-        return conn
-    else:
-        import sqlite3
-        conn = sqlite3.connect(DB_FILE)
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.row_factory = sqlite3.Row
-        return conn
+        import psycopg2
+        # Check if existing connection is alive
+        if _active_pg_conn is not None:
+            try:
+                if not _active_pg_conn.closed:
+                    cur = _active_pg_conn.cursor()
+                    cur.execute("SELECT 1;")
+                    cur.close()
+                    return _active_pg_conn
+            except Exception:
+                _active_pg_conn = None
+
+        # Try connecting with retries
+        last_error = None
+        for attempt in range(retries):
+            try:
+                conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
+                conn.autocommit = True
+                _active_pg_conn = conn
+                return conn
+            except Exception as e:
+                last_error = e
+                time.sleep(retry_delay)
+
+        # If network/DNS fails completely, report clear warning
+        print(f"\n[Database Notice] Temporary cloud network issue: {last_error}")
+        print("Falling back to local database engine to continue your session...\n")
+        USE_POSTGRES = False
+
+    # Fallback to local SQLite
+    import sqlite3
+    import campusfix_sqlite_init
+    campusfix_sqlite_init.init_sqlite(DB_FILE)
+    conn = sqlite3.connect(DB_FILE)
+    conn.execute("PRAGMA foreign_keys = ON;")
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 def get_cursor(conn):
@@ -62,7 +109,7 @@ def get_cursor(conn):
 
 
 def get_backend_name():
-    return "Supabase PostgreSQL 17 + pgvector (Cloud)" if USE_POSTGRES else "SQLite 3.50 (Local)"
+    return "Supabase PostgreSQL 17 + pgvector (Cloud)" if USE_POSTGRES else "SQLite 3.50 (Local Fallback)"
 
 
 # ============================================================================
@@ -100,7 +147,6 @@ def normalize_text(text):
 
 
 def generate_embedding(text):
-    """Generates a 384-dimensional dense normalized vector representation."""
     norm_t = normalize_text(text)
     words = [w for w in re.findall(r'[a-zA-Z0-9]+', norm_t) if w not in STOP_WORDS]
     dim = 384
@@ -181,12 +227,10 @@ def create_complaint(reporter_id, category_id, title, description, location_text
         """, (complaint_id, json.dumps(vec), content_hash))
         conn.commit()
 
-    conn.close()
     return complaint_id
 
 
 def find_similar_complaints(query_text, threshold=0.45, limit=5):
-    """Find similar complaints using pgvector in PostgreSQL or cosine similarity in SQLite."""
     conn = get_connection()
     cur = get_cursor(conn)
     query_vec = generate_embedding(query_text)
@@ -255,12 +299,10 @@ def find_similar_complaints(query_text, threshold=0.45, limit=5):
         results.sort(key=lambda x: x['similarity_score'], reverse=True)
         results = results[:limit]
 
-    conn.close()
     return results
 
 
 def get_complaint_details(complaint_id):
-    """Retrieve complete end-to-end details for a complaint."""
     conn = get_connection()
     cur = get_cursor(conn)
     param = "%s" if USE_POSTGRES else "?"
@@ -314,7 +356,6 @@ def get_complaint_details(complaint_id):
         """, (complaint_id,))
         history = [dict(r) for r in cur.fetchall()]
 
-    conn.close()
     return dict(details) if details else None, history
 
 
@@ -369,8 +410,6 @@ def assign_staff(complaint_id, staff_id, admin_id):
         """, (staff_id, complaint_id, complaint_id))
         conn.commit()
 
-    conn.close()
-
 
 def update_complaint_status(complaint_id, staff_id, new_status, remarks):
     conn = get_connection()
@@ -380,7 +419,6 @@ def update_complaint_status(complaint_id, staff_id, new_status, remarks):
         cur.execute("SELECT status, reporter_id FROM complaints WHERE complaint_id = %s;", (complaint_id,))
         row = cur.fetchone()
         if not row:
-            conn.close()
             raise ValueError(f"Complaint #{complaint_id} not found.")
 
         old_status = row['status']
@@ -399,7 +437,6 @@ def update_complaint_status(complaint_id, staff_id, new_status, remarks):
         cur.execute("SELECT status, reporter_id FROM complaints WHERE complaint_id = ?;", (complaint_id,))
         row = cur.fetchone()
         if not row:
-            conn.close()
             raise ValueError(f"Complaint #{complaint_id} not found.")
 
         old_status = row['status']
@@ -415,8 +452,6 @@ def update_complaint_status(complaint_id, staff_id, new_status, remarks):
             VALUES (?, ?, 'Your complaint #' || ? || ' status was updated to ' || ?);
         """, (reporter_id, complaint_id, complaint_id, new_status))
         conn.commit()
-
-    conn.close()
 
 
 def submit_feedback(complaint_id, rating, comment):
@@ -434,7 +469,6 @@ def submit_feedback(complaint_id, rating, comment):
             VALUES (?, ?, ?, datetime('now', 'localtime'));
         """, (complaint_id, rating, comment))
         conn.commit()
-    conn.close()
 
 
 def get_department_analytics():
@@ -442,7 +476,6 @@ def get_department_analytics():
     cur = get_cursor(conn)
     cur.execute("SELECT * FROM view_department_analytics ORDER BY department_id;")
     rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
     return rows
 
 
@@ -451,7 +484,6 @@ def get_pending_complaints():
     cur = get_cursor(conn)
     cur.execute("SELECT * FROM view_pending_complaints ORDER BY hours_open DESC;")
     rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
     return rows
 
 

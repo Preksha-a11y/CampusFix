@@ -419,6 +419,21 @@ def update_progress_flow(user):
         print("Invalid ID.")
         return
 
+    # Check complaint existence and assignment
+    conn = get_connection()
+    cur = get_cursor(conn)
+    param = "%s" if USE_POSTGRES else "?"
+    cur.execute(f"SELECT complaint_id, title, status FROM complaints WHERE complaint_id = {param};", (cid,))
+    comp_row = cur.fetchone()
+    if not comp_row:
+        print(f"[Error] Complaint #{cid} does not exist.")
+        return
+
+    cur.execute(f"SELECT staff_id FROM assignments WHERE complaint_id = {param} AND ended_at IS NULL;", (cid,))
+    assign_row = cur.fetchone()
+    if assign_row and assign_row['staff_id'] != user['user_id']:
+        print(f"[Notice] Complaint #{cid} is currently assigned to Staff #{assign_row['staff_id']}. Updating as {user['full_name']}.")
+
     print("\nSelect New Status:")
     print("  1. IN_PROGRESS")
     print("  2. RESOLVED")
@@ -431,9 +446,12 @@ def update_progress_flow(user):
         return
 
     remarks = input("Technician Remarks / Action Taken: ").strip()
-    update_complaint_status(cid, user['user_id'], new_status, remarks)
-    print(f"\n[OK] Complaint #{cid} updated to {new_status}!")
-    print(f"[OK] Trigger trg_complaint_status_audit logged transition into status_history.")
+    try:
+        update_complaint_status(cid, user['user_id'], new_status, remarks)
+        print(f"\n[OK] Complaint #{cid} updated to {new_status}!")
+        print(f"[OK] Trigger trg_complaint_status_audit logged transition into status_history.")
+    except Exception as e:
+        print(f"\n[Error updating status]: {e}")
 
 
 # ============================================================================
