@@ -1,0 +1,41 @@
+{
+  "name": "dbms-lvl3-proj",
+  "version": "1.0.0",
+  "description": "**DBMS Experiential Learning – Level 3 MiniProject**   **Department of Computer Science and Engineering, PES University**",
+  "main": "mongodb_schema.js",
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
+    "start": "next start"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Preksha-a11y/CampusFix.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/Preksha-a11y/CampusFix/issues"
+  },
+  "homepage": "https://github.com/Preksha-a11y/CampusFix#readme",
+  "dependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.6.2",
+    "bcryptjs": "^3.0.3",
+    "lucide-react": "^1.72.0",
+    "mongodb": "^7.8.0",
+    "next": "^16.4.6",
+    "pg": "^8.23.1",
+    "postcss": "^8.5.32",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tailwindcss": "^3.4.19",
+    "typescript": "^7.0.2"
+  }
+}
