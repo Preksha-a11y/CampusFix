@@ -55,12 +55,20 @@ export async function POST(
     );
 
     // 3. Update status to ASSIGNED if currently SUBMITTED
-    await query(
+    const updateRes = await query(
       `UPDATE complaints
        SET status = 'ASSIGNED'
        WHERE complaint_id = $1 AND status = 'SUBMITTED'`,
       [complaintId]
     );
+
+    if (updateRes.rowCount && updateRes.rowCount > 0) {
+      await query(
+        `INSERT INTO status_history (complaint_id, changed_by, old_status, new_status, remarks)
+         VALUES ($1, $2, 'SUBMITTED', 'ASSIGNED', 'Technician assigned by admin')`,
+        [complaintId, session.user_id]
+      );
+    }
 
     // 4. Notify technician
     const staffMsg = `You have been assigned to complaint #${complaintId}`;

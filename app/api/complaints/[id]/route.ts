@@ -60,6 +60,15 @@ export async function GET(
        FROM status_history sh
        JOIN users u ON sh.changed_by = u.user_id
        WHERE sh.complaint_id = $1
+         AND NOT (
+           sh.remarks LIKE 'Status transitioned from % to %' 
+           AND EXISTS (
+             SELECT 1 FROM status_history sh2 
+             WHERE sh2.complaint_id = sh.complaint_id 
+               AND sh2.new_status = sh.new_status 
+               AND sh2.history_id != sh.history_id
+           )
+         )
        ORDER BY sh.history_id ASC`,
       [complaintId]
     );

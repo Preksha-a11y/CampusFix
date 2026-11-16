@@ -32,7 +32,9 @@ export async function GET(req: NextRequest) {
         rep.full_name AS reporter_name,
         rep.email AS reporter_email,
         staff.user_id AS staff_id,
+        staff.user_id AS assigned_staff_id,
         staff.full_name AS staff_name,
+        staff.full_name AS assigned_staff_name,
         a.assigned_at,
         f.rating AS feedback_rating,
         f.comment AS feedback_comment
