@@ -47,7 +47,7 @@ export async function authenticateUser(email: string, passwordInput?: string): P
     `SELECT u.user_id, u.full_name, u.email, u.password_hash, u.is_active, u.role_id, r.role_name
      FROM users u
      JOIN roles r ON u.role_id = r.role_id
-     WHERE LOWER(u.email) = LOWER($1) AND (u.is_active = 1 OR u.is_active = TRUE)`,
+     WHERE LOWER(u.email) = LOWER($1) AND u.is_active = TRUE`,
     [email.trim()]
   );
 
@@ -135,7 +135,7 @@ export async function getAllUsers(): Promise<UserSession[]> {
     `SELECT u.user_id, u.full_name, u.email, u.role_id, r.role_name
      FROM users u
      JOIN roles r ON u.role_id = r.role_id
-     WHERE u.is_active = 1 OR u.is_active = TRUE
+     WHERE u.is_active = TRUE
      ORDER BY u.role_id ASC, u.user_id ASC`
   );
   return res.rows;

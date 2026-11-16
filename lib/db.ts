@@ -94,6 +94,7 @@ export async function query<T extends QueryResultRow = any>(
   sqliteSql = sqliteSql.replace(/EXTRACT\(EPOCH FROM \([^)]+\)\) \/ 3600\.0/gi, "4.0");
   sqliteSql = sqliteSql.replace(/\bILIKE\b/gi, 'LIKE');
   sqliteSql = sqliteSql.replace(/::vector/gi, '');
+  sqliteSql = sqliteSql.replace(/\bis_active\s*=\s*TRUE\b/gi, 'is_active = 1');
 
   const trimmed = sqliteSql.trim();
   const isSelect =

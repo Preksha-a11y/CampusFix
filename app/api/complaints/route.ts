@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
        RETURNING complaint_id, created_at`,
       [session.user_id, Number(category_id), title, description, location_text, priority]
     );
-    const complaintId = insertRes.rows[0].complaint_id;
+    const complaintId = Number(insertRes.rows[0].complaint_id);
 
     // 2. Insert initial status_history
     await query(

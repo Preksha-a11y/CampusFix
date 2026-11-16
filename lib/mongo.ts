@@ -50,7 +50,7 @@ export function extractKeywords(text: string): string[] {
 
 // 1. Sync / Insert complaint document
 export async function syncComplaintToMongo(data: {
-  complaint_id: number;
+  complaint_id: number | string;
   title: string;
   description: string;
   category: string;
@@ -58,13 +58,15 @@ export async function syncComplaintToMongo(data: {
   location: string;
   priority: string;
   status: string;
-  reporter_id: number;
+  reporter_id: number | string;
 }) {
   try {
     const col = await getComplaintCollection();
+    const numId = Number(data.complaint_id);
+    const repId = Number(data.reporter_id);
     const keywords = extractKeywords(`${data.title} ${data.description}`);
     const doc: ComplaintDocument = {
-      complaint_id: data.complaint_id,
+      complaint_id: numId,
       title: data.title,
       description: data.description,
       category: data.category,
@@ -76,14 +78,14 @@ export async function syncComplaintToMongo(data: {
         priority: data.priority,
         status: data.status,
         upvote_count: 1,
-        affected_users: [data.reporter_id],
+        affected_users: [repId],
         locations: [data.location],
         updated_at: new Date(),
       },
       created_at: new Date(),
     };
     await col.updateOne(
-      { complaint_id: data.complaint_id },
+      { complaint_id: numId },
       { $set: doc },
       { upsert: true }
     );
@@ -93,15 +95,17 @@ export async function syncComplaintToMongo(data: {
 }
 
 // 2. IDEA 1: Atomic Upvote in MongoDB
-export async function upvoteComplaintInMongo(complaint_id: number, user_id: number, location: string) {
+export async function upvoteComplaintInMongo(complaint_id: number | string, user_id: number | string, location: string) {
   try {
     const col = await getComplaintCollection();
+    const numId = Number(complaint_id);
+    const numUserId = Number(user_id);
     const result = await col.findOneAndUpdate(
-      { complaint_id },
+      { complaint_id: numId },
       {
         $inc: { 'metadata.upvote_count': 1 },
         $addToSet: {
-          'metadata.affected_users': user_id,
+          'metadata.affected_users': numUserId,
           'metadata.locations': location,
         },
         $set: { 'metadata.updated_at': new Date() },
@@ -116,11 +120,12 @@ export async function upvoteComplaintInMongo(complaint_id: number, user_id: numb
 }
 
 // 3. Update status in MongoDB
-export async function updateComplaintStatusInMongo(complaint_id: number, new_status: string, remark?: string) {
+export async function updateComplaintStatusInMongo(complaint_id: number | string, new_status: string, remark?: string) {
   try {
     const col = await getComplaintCollection();
+    const numId = Number(complaint_id);
     await col.updateOne(
-      { complaint_id },
+      { complaint_id: numId },
       {
         $set: {
           'metadata.status': new_status,
@@ -135,10 +140,11 @@ export async function updateComplaintStatusInMongo(complaint_id: number, new_sta
 }
 
 // 4. Delete complaint in MongoDB
-export async function deleteComplaintFromMongo(complaint_id: number) {
+export async function deleteComplaintFromMongo(complaint_id: number | string) {
   try {
     const col = await getComplaintCollection();
-    await col.deleteOne({ complaint_id });
+    const numId = Number(complaint_id);
+    await col.deleteOne({ complaint_id: numId });
   } catch (err) {
     console.error('MongoDB delete error:', err);
   }
