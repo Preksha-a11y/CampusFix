@@ -27,7 +27,8 @@ interface StaffUser {
   user_id: number;
   full_name: string;
   email: string;
-  role: string;
+  role?: string;
+  role_name?: 'REPORTER' | 'STAFF' | 'ADMIN';
 }
 
 interface Complaint {
@@ -263,6 +264,60 @@ export default function StaffPortal() {
         <div className="flex flex-col items-center gap-3">
           <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
           <p className="text-slate-600 font-medium">Verifying Staff Credentials...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const role = currentUser?.role_name || currentUser?.role;
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
+          <div className="w-14 h-14 mx-auto mb-4 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center">
+            <Wrench className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Staff Login Required</h2>
+          <p className="text-sm text-slate-600 mb-6">
+            Please log in with a Maintenance Staff or Administrator profile to view and update work orders.
+          </p>
+          <Link
+            href="/login"
+            className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-medium text-sm transition"
+          >
+            Go to Role Login &rarr;
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (role === 'REPORTER') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
+          <div className="w-14 h-14 mx-auto mb-4 bg-red-100 text-red-600 rounded-full flex items-center justify-center">
+            <ShieldCheck className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Access Restricted (RBAC)</h2>
+          <p className="text-sm text-slate-600 mb-6">
+            You are currently logged in as a <strong>Reporter / Student</strong> ({currentUser.full_name}). The Technician Work Orders Portal is restricted to Maintenance Staff and Estate Admins.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Link
+              href="/reporter"
+              className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium text-sm transition text-center"
+            >
+              Go to Student / Reporter Portal
+            </Link>
+            <Link
+              href="/login"
+              className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-sm transition text-center"
+            >
+              Switch Role &rarr;
+            </Link>
+          </div>
         </div>
       </div>
     );

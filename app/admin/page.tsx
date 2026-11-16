@@ -93,6 +93,8 @@ interface EvalQueryResult {
 }
 
 export default function AdminPortal() {
+  const [currentUser, setCurrentUser] = useState<{ user_id: number; full_name: string; email: string; role_name: string } | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'analytics' | 'overdue' | 'complaints' | 'idea1' | 'syllabus'>('analytics');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -169,11 +171,29 @@ export default function AdminPortal() {
     }
   }, []);
 
+  const fetchCurrentUser = useCallback(async () => {
+    try {
+      setAuthLoading(true);
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      if (data.authenticated && data.user) {
+        setCurrentUser(data.user);
+      } else {
+        setCurrentUser(null);
+      }
+    } catch {
+      setCurrentUser(null);
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
+    fetchCurrentUser();
     fetchAnalyticsData();
     fetchAllComplaints();
     fetchStaffList();
-  }, [fetchAnalyticsData, fetchAllComplaints, fetchStaffList]);
+  }, [fetchCurrentUser, fetchAnalyticsData, fetchAllComplaints, fetchStaffList]);
 
   // 4. Run Syllabus Query Handler
   const handleRunEvalQuery = async (queryId: string) => {
@@ -278,6 +298,69 @@ export default function AdminPortal() {
         return <span className="px-2 py-0.5 rounded text-xs bg-slate-100">{status}</span>;
     }
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <RefreshCw className="w-8 h-8 text-purple-600 animate-spin" />
+          <p className="text-slate-600 font-medium">Verifying Administrator Credentials...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
+          <div className="w-14 h-14 mx-auto mb-4 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Administrator Login Required</h2>
+          <p className="text-sm text-slate-600 mb-6">
+            Please log in with the Campus Estate Administrator profile to access this console.
+          </p>
+          <Link
+            href="/login"
+            className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium text-sm transition"
+          >
+            Go to Role Login &rarr;
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentUser.role_name !== 'ADMIN') {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center">
+          <div className="w-14 h-14 mx-auto mb-4 bg-red-100 text-red-600 rounded-full flex items-center justify-center">
+            <ShieldAlert className="w-7 h-7" />
+          </div>
+          <h2 className="text-xl font-bold text-slate-900 mb-2">Access Restricted (RBAC)</h2>
+          <p className="text-sm text-slate-600 mb-6">
+            You are currently logged in as a <strong>{currentUser.role_name === 'STAFF' ? 'Maintenance Staff' : 'Student / Reporter'}</strong> ({currentUser.full_name}). The Campus Facilities Administration Console is strictly restricted to Campus Estate Administrators.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Link
+              href={currentUser.role_name === 'STAFF' ? '/staff' : '/reporter'}
+              className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-medium text-sm transition text-center"
+            >
+              Go to My Role Workspace ({currentUser.role_name === 'STAFF' ? 'Staff Portal' : 'Student Portal'})
+            </Link>
+            <Link
+              href="/login"
+              className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-medium text-sm transition text-center"
+            >
+              Switch Role &rarr;
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
