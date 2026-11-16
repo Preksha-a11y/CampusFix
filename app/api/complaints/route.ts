@@ -148,13 +148,14 @@ export async function POST(req: NextRequest) {
     }
 
     // 4. Notify admin users
+    const adminMsg = `New complaint #${complaintId} submitted: ${title}`;
     await query(
       `INSERT INTO notifications (user_id, complaint_id, message)
-       SELECT u.user_id, $1, 'New complaint #' || $1 || ' submitted: ' || $2
+       SELECT u.user_id, $1, $2
        FROM users u
        JOIN roles r ON u.role_id = r.role_id
        WHERE r.role_name = 'ADMIN'`,
-      [complaintId, title]
+      [complaintId, adminMsg]
     );
 
     await query('COMMIT');

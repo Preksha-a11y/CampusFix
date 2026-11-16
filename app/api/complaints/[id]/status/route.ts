@@ -53,10 +53,11 @@ export async function PATCH(
     await updateComplaintStatusInMongo(complaintId, status, remarks);
 
     // 4. Notify the reporter
+    const reporterMsg = `Complaint #${complaintId} (${title}) was updated to ${status}`;
     await query(
       `INSERT INTO notifications (user_id, complaint_id, message)
-       VALUES ($1, $2, 'Complaint #' || $2 || ' (' || $3 || ') was updated to ' || $4)`,
-      [reporterId, complaintId, title, status]
+       VALUES ($1, $2, $3)`,
+      [reporterId, complaintId, reporterMsg]
     );
 
     // 5. Also notify any community students who upvoted this ticket via MongoDB affected_users
@@ -64,12 +65,13 @@ export async function PATCH(
       const col = await getComplaintCollection();
       const doc = await col.findOne({ complaint_id: complaintId });
       const affected = doc?.metadata?.affected_users || [];
+      const upvoteMsg = `The issue you upvoted #${complaintId} (${title}) has been updated to ${status}`;
       for (const uId of affected) {
         if (uId !== reporterId && uId !== session.user_id) {
           await query(
             `INSERT INTO notifications (user_id, complaint_id, message)
-             VALUES ($1, $2, 'The issue you upvoted #' || $2 || ' (' || $3 || ') has been updated to ' || $4)`,
-            [uId, complaintId, title, status]
+             VALUES ($1, $2, $3)`,
+            [uId, complaintId, upvoteMsg]
           );
         }
       }

@@ -46,10 +46,11 @@ export async function POST(
     }
 
     // 3. Insert notification for the upvoting user
+    const subMsg = `You have subscribed to updates on Complaint #${complaintId} (Community Upvotes: ${newUpvotes})`;
     await query(
       `INSERT INTO notifications (user_id, complaint_id, message)
-       VALUES ($1, $2, 'You have subscribed to updates on Complaint #' || $2 || ' (Community Upvotes: ' || $3 || ')')`,
-      [session.user_id, complaintId, newUpvotes]
+       VALUES ($1, $2, $3)`,
+      [session.user_id, complaintId, subMsg]
     );
 
     return NextResponse.json({

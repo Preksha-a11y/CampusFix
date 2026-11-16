@@ -63,10 +63,11 @@ export async function POST(
     );
 
     // 4. Notify technician
+    const staffMsg = `You have been assigned to complaint #${complaintId}`;
     await query(
       `INSERT INTO notifications (user_id, complaint_id, message)
-       VALUES ($1, $2, 'You have been assigned to complaint #' || $2)`,
-      [staff_id, complaintId]
+       VALUES ($1, $2, $3)`,
+      [staff_id, complaintId, staffMsg]
     );
 
     await query('COMMIT');
