@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import Link from 'next/link';
+import NavbarUserPill from '@/components/NavbarUserPill';
 
 export const metadata: Metadata = {
   title: 'CampusFix | Intelligent Complaint Resolution Platform',
@@ -50,6 +51,9 @@ export default function RootLayout({
               >
                 Admin Console
               </Link>
+              <div className="ml-2 pl-2 border-l border-slate-200">
+                <NavbarUserPill />
+              </div>
             </nav>
           </div>
         </header>

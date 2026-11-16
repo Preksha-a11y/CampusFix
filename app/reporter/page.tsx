@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { 
   AlertTriangle, 
   ThumbsUp, 
@@ -15,7 +16,9 @@ import {
   MapPin,
   Building2,
   X,
-  FileText
+  FileText,
+  UserCheck,
+  LogIn
 } from 'lucide-react';
 
 interface Category {
@@ -37,6 +40,9 @@ interface Complaint {
   category_name: string;
   target_hours: number;
   department_name: string;
+  reporter_id?: number;
+  reporter_name?: string;
+  reporter_email?: string;
   staff_name: string | null;
   feedback_rating: number | null;
   feedback_comment: string | null;
@@ -61,6 +67,7 @@ export default function ReporterPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filterTab, setFilterTab] = useState<'all' | 'my'>('all');
 
   // New complaint form state
   const [showModal, setShowModal] = useState(false);
@@ -97,16 +104,13 @@ export default function ReporterPage() {
       const authRes = await fetch('/api/auth/me');
       if (authRes.ok) {
         const authData = await authRes.json();
-        setUser(authData.user);
+        if (authData.authenticated && authData.user) {
+          setUser(authData.user);
+        } else {
+          setUser(null);
+        }
       } else {
-        // Fallback login as student Aarav Sharma
-        const loginRes = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: 'aarav.sharma@pes.edu', password: 'password123' }),
-        });
-        const loginData = await loginRes.json();
-        setUser(loginData.user);
+        setUser(null);
       }
 
       // 2. Fetch categories
@@ -265,17 +269,36 @@ export default function ReporterPage() {
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-slate-900">Student & Faculty Reporter Portal</h1>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
-              Live Session
-            </span>
+            <h1 className="text-2xl font-bold text-slate-900">Student &amp; Faculty Reporter Portal</h1>
+            {user ? (
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                Active: {user.role_name}
+              </span>
+            ) : (
+              <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
+                Not Signed In
+              </span>
+            )}
           </div>
-          <p className="text-slate-500 text-sm mt-1">
-            Logged in as <strong className="text-slate-800">{user?.full_name || 'Aarav Sharma'}</strong> ({user?.email || 'aarav.sharma@pes.edu'})
-          </p>
+          {user ? (
+            <p className="text-slate-500 text-sm mt-1">
+              Logged in as <strong className="text-slate-800">{user.full_name}</strong> ({user.email})
+            </p>
+          ) : (
+            <p className="text-slate-500 text-sm mt-1">
+              You are currently viewing as guest. Please sign in to submit complaints or upvote tickets.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
+          <Link
+            href="/login"
+            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 text-xs font-semibold shadow-xs transition flex items-center gap-1.5"
+          >
+            <UserCheck className="w-3.5 h-3.5 text-slate-600" />
+            <span>{user ? 'Switch User / Profile' : 'Sign In'}</span>
+          </Link>
           <button
             onClick={loadComplaints}
             className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
@@ -284,7 +307,14 @@ export default function ReporterPage() {
             <RefreshCw className="w-4 h-4" />
           </button>
           <button
-            onClick={() => { setShowModal(true); resetForm(); }}
+            onClick={() => {
+              if (!user) {
+                window.location.href = '/login';
+                return;
+              }
+              setShowModal(true);
+              resetForm();
+            }}
             className="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-semibold text-sm flex items-center gap-2 shadow-sm transition-all"
           >
             <PlusCircle className="w-4 h-4" /> File New Complaint
@@ -292,15 +322,46 @@ export default function ReporterPage() {
         </div>
       </div>
 
+      {/* Tab Filter */}
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <button
+          onClick={() => setFilterTab('all')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+            filterTab === 'all'
+              ? 'bg-slate-900 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+          }`}
+        >
+          All Campus Complaints ({complaints.length})
+        </button>
+        {user && (
+          <button
+            onClick={() => setFilterTab('my')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition ${
+              filterTab === 'my'
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            My Reported Issues ({complaints.filter((c) => c.reporter_id === user.user_id).length})
+          </button>
+        )}
+      </div>
+
       {/* Complaints List Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-5 border-b border-slate-200 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">All Campus Complaints & Live Status</h2>
+            <h2 className="text-lg font-bold text-slate-900">
+              {filterTab === 'my' ? 'My Reported Complaints' : 'All Campus Complaints & Live Status'}
+            </h2>
             <p className="text-xs text-slate-500">Live synchronized with Supabase PostgreSQL and MongoDB</p>
           </div>
           <div className="text-xs font-semibold text-slate-500">
-            Total Logged: {complaints.length}
+            Showing:{' '}
+            {filterTab === 'my' && user
+              ? complaints.filter((c) => c.reporter_id === user.user_id).length
+              : complaints.length}
           </div>
         </div>
 
@@ -309,7 +370,7 @@ export default function ReporterPage() {
             <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase tracking-wider">
               <tr>
                 <th className="py-3.5 px-4">ID</th>
-                <th className="py-3.5 px-4">Title & Category</th>
+                <th className="py-3.5 px-4">Title &amp; Category</th>
                 <th className="py-3.5 px-4">Department</th>
                 <th className="py-3.5 px-4">Priority</th>
                 <th className="py-3.5 px-4">Status</th>
@@ -319,7 +380,10 @@ export default function ReporterPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium">
-              {complaints.map((c) => (
+              {(filterTab === 'my' && user
+                ? complaints.filter((c) => c.reporter_id === user.user_id)
+                : complaints
+              ).map((c) => (
                 <tr key={c.complaint_id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3.5 px-4 font-mono font-bold text-slate-700">#{c.complaint_id}</td>
                   <td className="py-3.5 px-4">
@@ -410,6 +474,24 @@ export default function ReporterPage() {
             {formMsg && (
               <div className={`p-4 rounded-xl text-sm font-medium ${formMsg.includes('Error') ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-emerald-50 text-emerald-800 border border-emerald-200'}`}>
                 {formMsg}
+              </div>
+            )}
+
+            {user ? (
+              <div className="p-3 bg-sky-50 rounded-xl text-xs text-sky-800 border border-sky-200 flex items-center justify-between">
+                <span>
+                  Filing complaint as: <strong>{user.full_name}</strong> ({user.email})
+                </span>
+                <Link href="/login" className="text-sky-600 underline font-semibold">
+                  Switch Account
+                </Link>
+              </div>
+            ) : (
+              <div className="p-3 bg-amber-50 rounded-xl text-xs text-amber-800 border border-amber-200 flex items-center justify-between">
+                <span>You must be signed in to submit a complaint.</span>
+                <Link href="/login" className="px-2.5 py-1 rounded bg-amber-600 text-white font-semibold">
+                  Sign In Now
+                </Link>
               </div>
             )}
 

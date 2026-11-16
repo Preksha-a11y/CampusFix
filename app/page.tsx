@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { ShieldCheck, UserCheck, Wrench, Sparkles, Database, CheckCircle2, ArrowRight } from 'lucide-react';
 
 export default function HomePage() {
@@ -48,11 +49,17 @@ export default function HomePage() {
               <Database className="w-4 h-4 text-emerald-400" /> PostgreSQL 17 (Supabase)
             </div>
             <div className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-lg border border-white/10">
-              <Sparkles className="w-4 h-4 text-sky-400" /> pgvector 384-d Cosine Radar
+              <CheckCircle2 className="w-4 h-4 text-amber-400" /> MongoDB 8.2 (Live Upvotes &amp; Docs)
             </div>
-            <div className="flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-lg border border-white/10">
-              <CheckCircle2 className="w-4 h-4 text-amber-400" /> MongoDB 8.2 (Live Upvotes & Docs)
-            </div>
+          </div>
+
+          <div className="pt-2 flex flex-wrap items-center gap-3">
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white text-sm font-bold shadow-lg shadow-sky-500/25 transition"
+            >
+              <UserCheck className="w-4 h-4" /> Open User Login Page &rarr;
+            </Link>
           </div>
         </div>
       </div>
@@ -65,11 +72,17 @@ export default function HomePage() {
 
       {/* 1-Click Role Login Cards */}
       <div>
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
             <h2 className="text-2xl font-bold text-slate-900">Select Role to Launch Portal</h2>
-            <p className="text-slate-500 text-sm">Choose an authorized campus profile for instant evaluation</p>
+            <p className="text-slate-500 text-sm">Choose an authorized campus profile or sign in with custom credentials</p>
           </div>
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold border border-indigo-200 transition"
+          >
+            All Campus Accounts &amp; Register &rarr;
+          </Link>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

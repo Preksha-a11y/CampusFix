@@ -4,8 +4,8 @@ import { authenticateUser, setSession } from '@/lib/auth';
 export async function POST(req: NextRequest) {
   try {
     const { email, password } = await req.json();
-    if (!email || !password) {
-      return NextResponse.json({ error: 'Email and password required' }, { status: 400 });
+    if (!email) {
+      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
     }
 
     const user = await authenticateUser(email, password);

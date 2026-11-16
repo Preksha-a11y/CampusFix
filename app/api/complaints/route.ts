@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, getPgPool } from '@/lib/db';
+import { query, isUsingPostgres } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { generateEmbedding, toVectorString } from '@/lib/vector';
 import { syncComplaintToMongo, getComplaintCollection } from '@/lib/mongo';
@@ -95,8 +95,6 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const pool = getPgPool();
-  const client = await pool.connect();
   try {
     const session = await getSession();
     if (!session) {
@@ -111,19 +109,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Begin ACID transaction
-    await client.query('BEGIN');
+    await query('BEGIN');
 
-    // 1. Insert into PostgreSQL complaints
-    const insertRes = await client.query(
+    // 1. Insert into complaints
+    const insertRes = await query(
       `INSERT INTO complaints (reporter_id, category_id, title, description, location_text, priority, status)
        VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED')
        RETURNING complaint_id, created_at`,
-      [session.user_id, category_id, title, description, location_text, priority]
+      [session.user_id, Number(category_id), title, description, location_text, priority]
     );
     const complaintId = insertRes.rows[0].complaint_id;
 
     // 2. Insert initial status_history
-    await client.query(
+    await query(
       `INSERT INTO status_history (complaint_id, changed_by, old_status, new_status, remarks)
        VALUES ($1, $2, NULL, 'SUBMITTED', 'Complaint submitted by reporter')`,
       [complaintId, session.user_id]
@@ -132,17 +130,25 @@ export async function POST(req: NextRequest) {
     // 3. Generate dense vector embedding (384-d) and store in complaint_embeddings
     const fullText = `${title} ${description} ${location_text}`;
     const vec = generateEmbedding(fullText);
-    const vecStr = toVectorString(vec);
     const contentHash = crypto.createHash('sha256').update(fullText).digest('hex');
 
-    await client.query(
-      `INSERT INTO complaint_embeddings (complaint_id, embedding, model_name, content_hash)
-       VALUES ($1, $2::vector, 'all-MiniLM-L6-v2', $3)`,
-      [complaintId, vecStr, contentHash]
-    );
+    if (isUsingPostgres()) {
+      const vecStr = toVectorString(vec);
+      await query(
+        `INSERT INTO complaint_embeddings (complaint_id, embedding, model_name, content_hash)
+         VALUES ($1, $2::vector, 'all-MiniLM-L6-v2', $3)`,
+        [complaintId, vecStr, contentHash]
+      );
+    } else {
+      await query(
+        `INSERT INTO complaint_embeddings (complaint_id, embedding_json, model_name, content_hash)
+         VALUES ($1, $2, 'all-MiniLM-L6-v2', $3)`,
+        [complaintId, JSON.stringify(vec), contentHash]
+      );
+    }
 
     // 4. Notify admin users
-    await client.query(
+    await query(
       `INSERT INTO notifications (user_id, complaint_id, message)
        SELECT u.user_id, $1, 'New complaint #' || $1 || ' submitted: ' || $2
        FROM users u
@@ -151,7 +157,7 @@ export async function POST(req: NextRequest) {
       [complaintId, title]
     );
 
-    await client.query('COMMIT');
+    await query('COMMIT');
 
     // 5. Get category and department details for live MongoDB document synchronization
     const metaRes = await query(
@@ -179,10 +185,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, complaint_id: complaintId });
   } catch (err: any) {
-    await client.query('ROLLBACK');
+    await query('ROLLBACK').catch(() => {});
     console.error('Error creating complaint:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
-  } finally {
-    client.release();
   }
 }

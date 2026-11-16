@@ -1,11 +1,11 @@
 import pg from 'pg';
-import type { QueryResult, QueryResultRow } from 'pg';
+import type { Pool as PgPoolType, QueryResult, QueryResultRow } from 'pg';
 import path from 'path';
 
 const { Pool } = pg;
 
 // PostgreSQL connection cache
-let pgPool: Pool | null = null;
+let pgPool: PgPoolType | null = null;
 let pgFailed = false;
 
 // SQLite connection cache using Node.js built-in DatabaseSync
@@ -20,7 +20,7 @@ async function getSqliteDb() {
   return sqliteDb;
 }
 
-export function getPgPool(): Pool {
+export function getPgPool(): PgPoolType {
   if (!pgPool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) {
@@ -37,7 +37,7 @@ export function getPgPool(): Pool {
       connectionTimeoutMillis: 5000,
     });
 
-    pgPool.on('error', (err) => {
+    pgPool.on('error', (err: any) => {
       console.warn('[PostgreSQL Pool Warning]:', err.message);
     });
   }
@@ -74,18 +74,32 @@ export async function query<T extends QueryResultRow = any>(
   // SQLite execution fallback
   const db = await getSqliteDb();
 
-  // Convert PostgreSQL $1, $2, ... placeholders to SQLite ?
-  let sqliteSql = text.replace(/\$(\d+)/g, '?');
+  // Convert PostgreSQL $1, $2, ... placeholders to SQLite ?, correctly mapping reused parameter indices
+  const cleanParams: any[] = [];
+  let sqliteSql = text.replace(/\$(\d+)/g, (_, match) => {
+    const idx = parseInt(match, 10) - 1;
+    if (params && idx >= 0 && idx < params.length) {
+      let val = params[idx];
+      if (typeof val === 'boolean') val = val ? 1 : 0;
+      cleanParams.push(val);
+    } else {
+      cleanParams.push(null);
+    }
+    return '?';
+  });
 
   // Replace PostgreSQL specific functions or constructs if needed
   sqliteSql = sqliteSql.replace(/TIMESTAMPTZ/gi, 'TEXT');
   sqliteSql = sqliteSql.replace(/CURRENT_TIMESTAMP/gi, "datetime('now', 'localtime')");
   sqliteSql = sqliteSql.replace(/EXTRACT\(EPOCH FROM \([^)]+\)\) \/ 3600\.0/gi, "4.0");
-
-  const cleanParams = params ? params.map((p) => (typeof p === 'boolean' ? (p ? 1 : 0) : p)) : [];
+  sqliteSql = sqliteSql.replace(/\bILIKE\b/gi, 'LIKE');
+  sqliteSql = sqliteSql.replace(/::vector/gi, '');
 
   const trimmed = sqliteSql.trim();
-  const isSelect = trimmed.toUpperCase().startsWith('SELECT') || trimmed.toUpperCase().startsWith('WITH');
+  const isSelect =
+    trimmed.toUpperCase().startsWith('SELECT') ||
+    trimmed.toUpperCase().startsWith('WITH') ||
+    trimmed.toUpperCase().includes('RETURNING');
 
   if (isSelect) {
     const stmt = db.prepare(sqliteSql);

@@ -313,6 +313,12 @@ export default function StaffPortal() {
             >
               Anand (Network)
             </button>
+            <Link
+              href="/login"
+              className="px-2.5 py-1.5 rounded-md text-sky-400 hover:text-sky-300 hover:bg-slate-700 transition font-medium"
+            >
+              All Profiles &rarr;
+            </Link>
           </div>
         </div>
       </div>

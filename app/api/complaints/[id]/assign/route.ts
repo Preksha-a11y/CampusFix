@@ -23,8 +23,6 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const pool = getPgPool();
-  const client = await pool.connect();
   try {
     const session = await getSession();
     if (!session || session.role_name !== 'ADMIN') {
@@ -39,10 +37,10 @@ export async function POST(
       return NextResponse.json({ error: 'Staff ID required' }, { status: 400 });
     }
 
-    await client.query('BEGIN');
+    await query('BEGIN');
 
     // 1. Close any existing active assignment
-    await client.query(
+    await query(
       `UPDATE assignments
        SET ended_at = CURRENT_TIMESTAMP
        WHERE complaint_id = $1 AND ended_at IS NULL`,
@@ -50,14 +48,14 @@ export async function POST(
     );
 
     // 2. Insert new assignment
-    await client.query(
+    await query(
       `INSERT INTO assignments (complaint_id, staff_id, assigned_by, assigned_at)
        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
       [complaintId, staff_id, session.user_id]
     );
 
     // 3. Update status to ASSIGNED if currently SUBMITTED
-    await client.query(
+    await query(
       `UPDATE complaints
        SET status = 'ASSIGNED'
        WHERE complaint_id = $1 AND status = 'SUBMITTED'`,
@@ -65,23 +63,21 @@ export async function POST(
     );
 
     // 4. Notify technician
-    await client.query(
+    await query(
       `INSERT INTO notifications (user_id, complaint_id, message)
        VALUES ($1, $2, 'You have been assigned to complaint #' || $2)`,
       [staff_id, complaintId]
     );
 
-    await client.query('COMMIT');
+    await query('COMMIT');
 
     // Update MongoDB metadata
     await updateComplaintStatusInMongo(complaintId, 'ASSIGNED', 'Assigned to maintenance technician');
 
     return NextResponse.json({ success: true, complaint_id: complaintId, staff_id });
   } catch (err: any) {
-    await client.query('ROLLBACK');
+    await query('ROLLBACK').catch(() => {});
     console.error('Error assigning staff:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
-  } finally {
-    client.release();
   }
 }
