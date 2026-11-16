@@ -159,14 +159,18 @@ export default function AdminPortal() {
       } else {
         // Fallback default staff
         setStaffList([
-          { user_id: 2, full_name: 'Suresh Patel', email: 'suresh.plumber@pes.edu', department_id: 1, specialization: 'Estate & Plumbing' },
-          { user_id: 3, full_name: 'Anand V', email: 'anand.network@pes.edu', department_id: 2, specialization: 'IT & Network' }
+          { user_id: 4, full_name: 'Ramesh K (Electrician)', email: 'ramesh.electrician@pes.edu', department_id: 1, specialization: 'Electrical Maintenance' },
+          { user_id: 5, full_name: 'Suresh Patel (Plumber)', email: 'suresh.plumber@pes.edu', department_id: 1, specialization: 'Estate & Plumbing' },
+          { user_id: 6, full_name: 'Anand V (Network Admin)', email: 'anand.network@pes.edu', department_id: 2, specialization: 'IT & Network' },
+          { user_id: 7, full_name: 'Mariyappa (Housekeeping Lead)', email: 'mariyappa.clean@pes.edu', department_id: 1, specialization: 'Housekeeping' }
         ]);
       }
     } catch {
       setStaffList([
-        { user_id: 2, full_name: 'Suresh Patel', email: 'suresh.plumber@pes.edu', department_id: 1, specialization: 'Estate & Plumbing' },
-        { user_id: 3, full_name: 'Anand V', email: 'anand.network@pes.edu', department_id: 2, specialization: 'IT & Network' }
+        { user_id: 4, full_name: 'Ramesh K (Electrician)', email: 'ramesh.electrician@pes.edu', department_id: 1, specialization: 'Electrical Maintenance' },
+        { user_id: 5, full_name: 'Suresh Patel (Plumber)', email: 'suresh.plumber@pes.edu', department_id: 1, specialization: 'Estate & Plumbing' },
+        { user_id: 6, full_name: 'Anand V (Network Admin)', email: 'anand.network@pes.edu', department_id: 2, specialization: 'IT & Network' },
+        { user_id: 7, full_name: 'Mariyappa (Housekeeping Lead)', email: 'mariyappa.clean@pes.edu', department_id: 1, specialization: 'Housekeeping' }
       ]);
     }
   }, []);
@@ -659,8 +663,25 @@ export default function AdminPortal() {
                         <td className="py-3 px-4 text-right">
                           <button
                             onClick={() => {
-                              const found = complaints.find(c => c.complaint_id === p.complaint_id);
-                              if (found) setAssigningComplaint(found);
+                              const pAny = p as any;
+                              const found = complaints.find(c => Number(c.complaint_id) === Number(p.complaint_id)) || {
+                                complaint_id: Number(p.complaint_id),
+                                title: p.title,
+                                description: pAny.description || '',
+                                location_text: pAny.location_text || '',
+                                priority: p.priority as any,
+                                status: p.status as any,
+                                category_name: pAny.category_name || '',
+                                department_name: p.department_name || '',
+                                target_hours: p.target_hours || 8,
+                                reporter_name: pAny.reporter_name || '',
+                                reporter_email: pAny.reporter_email || '',
+                                created_at: pAny.created_at || '',
+                                assigned_staff_id: pAny.assigned_staff_id,
+                                assigned_staff_name: p.assigned_staff_name
+                              };
+                              setAssigningComplaint(found as any);
+                              setSelectedStaffId(found.assigned_staff_id ? Number(found.assigned_staff_id) : '');
                             }}
                             className="px-2.5 py-1 text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg transition"
                           >
@@ -755,6 +776,20 @@ export default function AdminPortal() {
                         </div>
                       )}
                     </div>
+
+                    <div className="mt-4 pt-3 border-t border-indigo-100 flex items-center justify-between">
+                      <span className="text-[11px] text-slate-500 font-medium">Idea 1 Action</span>
+                      <button
+                        onClick={() => {
+                          setAssigningComplaint(c);
+                          setSelectedStaffId(c.assigned_staff_id ? Number(c.assigned_staff_id) : '');
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition flex items-center gap-1.5 shadow-sm"
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        {c.assigned_staff_name ? 'Reassign Staff' : 'Assign Staff'}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -819,7 +854,10 @@ export default function AdminPortal() {
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
-                          onClick={() => setAssigningComplaint(c)}
+                          onClick={() => {
+                            setAssigningComplaint(c);
+                            setSelectedStaffId(c.assigned_staff_id ? Number(c.assigned_staff_id) : '');
+                          }}
                           className="px-2.5 py-1 text-xs font-semibold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-lg transition"
                         >
                           {c.assigned_staff_name ? 'Reassign' : 'Assign'}

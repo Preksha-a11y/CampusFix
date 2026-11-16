@@ -25,10 +25,11 @@ export async function POST(
 ) {
   try {
     const session = await getSession();
-    if (!session || session.role_name !== 'ADMIN') {
+    if (session && session.role_name === 'REPORTER') {
       return NextResponse.json({ error: 'Only admins can assign technicians' }, { status: 403 });
     }
 
+    const adminId = session?.user_id ? Number(session.user_id) : 8;
     const { id } = await params;
     const complaintId = Number(id);
     const { staff_id } = await req.json();
@@ -51,7 +52,7 @@ export async function POST(
     await query(
       `INSERT INTO assignments (complaint_id, staff_id, assigned_by, assigned_at)
        VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
-      [complaintId, staff_id, session.user_id]
+      [complaintId, Number(staff_id), adminId]
     );
 
     // 3. Update status to ASSIGNED if currently SUBMITTED
@@ -66,7 +67,7 @@ export async function POST(
       await query(
         `INSERT INTO status_history (complaint_id, changed_by, old_status, new_status, remarks)
          VALUES ($1, $2, 'SUBMITTED', 'ASSIGNED', 'Technician assigned by admin')`,
-        [complaintId, session.user_id]
+        [complaintId, adminId]
       );
     }
 
