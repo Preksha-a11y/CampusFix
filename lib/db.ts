@@ -33,8 +33,8 @@ export function getPgPool(): PgPoolType {
         rejectUnauthorized: false,
       },
       max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 60000,
+      connectionTimeoutMillis: 20000,
     });
 
     pgPool.on('error', (err: any) => {
@@ -44,34 +44,59 @@ export function getPgPool(): PgPoolType {
   return pgPool;
 }
 
+export interface TransactionClient {
+  query: <T extends QueryResultRow = any>(text: string, params?: any[]) => Promise<QueryResult<T>>;
+}
+
+export async function withTransaction<T>(
+  callback: (client: TransactionClient) => Promise<T>
+): Promise<T> {
+  if (process.env.DATABASE_URL) {
+    const pool = getPgPool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await callback(client);
+      await client.query('COMMIT');
+      return result;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  } else {
+    // SQLite transaction fallback
+    const db = await getSqliteDb();
+    db.exec('BEGIN TRANSACTION');
+    try {
+      const result = await callback({
+        query: (text, params) => querySqlite(text, params),
+      });
+      db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+}
+
 export async function query<T extends QueryResultRow = any>(
   text: string,
   params?: any[]
 ): Promise<QueryResult<T>> {
-  // If PostgreSQL hasn't permanently failed, try connecting
-  if (!pgFailed) {
-    try {
-      const p = getPgPool();
-      return await p.query<T>(text, params);
-    } catch (err: any) {
-      // If error indicates host not found, tenant not found, or paused project, fall back to SQLite
-      const msg = err.message || '';
-      if (
-        msg.includes('tenant') ||
-        msg.includes('not found') ||
-        msg.includes('ENOTFOUND') ||
-        msg.includes('connect ECONNREFUSED') ||
-        msg.includes('timeout')
-      ) {
-        console.warn(`[Dual-Backend Fallback] Cloud PostgreSQL unreachable (${msg}). Seamlessly switching to local engine (campusfix.db).`);
-        pgFailed = true;
-      } else {
-        throw err;
-      }
-    }
+  if (process.env.DATABASE_URL) {
+    const p = getPgPool();
+    return await p.query<T>(text, params);
   }
+  return await querySqlite<T>(text, params);
+}
 
-  // SQLite execution fallback
+async function querySqlite<T extends QueryResultRow = any>(
+  text: string,
+  params?: any[]
+): Promise<QueryResult<T>> {
   const db = await getSqliteDb();
 
   // Convert PostgreSQL $1, $2, ... placeholders to SQLite ?, correctly mapping reused parameter indices

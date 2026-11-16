@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/auth';
-import { query, getPgPool } from '@/lib/db';
+import { query, getPgPool, withTransaction } from '@/lib/db';
 import { updateComplaintStatusInMongo } from '@/lib/mongo';
 
 export async function GET() {
@@ -38,48 +38,46 @@ export async function POST(
       return NextResponse.json({ error: 'Staff ID required' }, { status: 400 });
     }
 
-    await query('BEGIN');
-
-    // 1. Close any existing active assignment
-    await query(
-      `UPDATE assignments
-       SET ended_at = CURRENT_TIMESTAMP
-       WHERE complaint_id = $1 AND ended_at IS NULL`,
-      [complaintId]
-    );
-
-    // 2. Insert new assignment
-    await query(
-      `INSERT INTO assignments (complaint_id, staff_id, assigned_by, assigned_at)
-       VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
-      [complaintId, Number(staff_id), adminId]
-    );
-
-    // 3. Update status to ASSIGNED if currently SUBMITTED
-    const updateRes = await query(
-      `UPDATE complaints
-       SET status = 'ASSIGNED'
-       WHERE complaint_id = $1 AND status = 'SUBMITTED'`,
-      [complaintId]
-    );
-
-    if (updateRes.rowCount && updateRes.rowCount > 0) {
-      await query(
-        `INSERT INTO status_history (complaint_id, changed_by, old_status, new_status, remarks)
-         VALUES ($1, $2, 'SUBMITTED', 'ASSIGNED', 'Technician assigned by admin')`,
-        [complaintId, adminId]
+    await withTransaction(async (client) => {
+      // 1. Close any existing active assignment
+      await client.query(
+        `UPDATE assignments
+         SET ended_at = CURRENT_TIMESTAMP
+         WHERE complaint_id = $1 AND ended_at IS NULL`,
+        [complaintId]
       );
-    }
 
-    // 4. Notify technician
-    const staffMsg = `You have been assigned to complaint #${complaintId}`;
-    await query(
-      `INSERT INTO notifications (user_id, complaint_id, message)
-       VALUES ($1, $2, $3)`,
-      [staff_id, complaintId, staffMsg]
-    );
+      // 2. Insert new assignment
+      await client.query(
+        `INSERT INTO assignments (complaint_id, staff_id, assigned_by, assigned_at)
+         VALUES ($1, $2, $3, CURRENT_TIMESTAMP)`,
+        [complaintId, Number(staff_id), adminId]
+      );
 
-    await query('COMMIT');
+      // 3. Update status to ASSIGNED if currently SUBMITTED
+      const updateRes = await client.query(
+        `UPDATE complaints
+         SET status = 'ASSIGNED'
+         WHERE complaint_id = $1 AND status = 'SUBMITTED'`,
+        [complaintId]
+      );
+
+      if (updateRes.rowCount && updateRes.rowCount > 0) {
+        await client.query(
+          `INSERT INTO status_history (complaint_id, changed_by, old_status, new_status, remarks)
+           VALUES ($1, $2, 'SUBMITTED', 'ASSIGNED', 'Technician assigned by admin')`,
+          [complaintId, adminId]
+        );
+      }
+
+      // 4. Notify technician
+      const staffMsg = `You have been assigned to complaint #${complaintId}`;
+      await client.query(
+        `INSERT INTO notifications (user_id, complaint_id, message)
+         VALUES ($1, $2, $3)`,
+        [Number(staff_id), complaintId, staffMsg]
+      );
+    });
 
     // Update MongoDB metadata
     await updateComplaintStatusInMongo(complaintId, 'ASSIGNED', 'Assigned to maintenance technician');

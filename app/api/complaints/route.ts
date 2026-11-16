@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { query, isUsingPostgres } from '@/lib/db';
+import { query, isUsingPostgres, withTransaction } from '@/lib/db';
 import { getSession } from '@/lib/auth';
 import { generateEmbedding, toVectorString } from '@/lib/vector';
 import { syncComplaintToMongo, getComplaintCollection } from '@/lib/mongo';
@@ -110,57 +110,57 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'All fields are required' }, { status: 400 });
     }
 
-    // Begin ACID transaction
-    await query('BEGIN');
-
-    // 1. Insert into complaints
-    const insertRes = await query(
-      `INSERT INTO complaints (reporter_id, category_id, title, description, location_text, priority, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED')
-       RETURNING complaint_id, created_at`,
-      [session.user_id, Number(category_id), title, description, location_text, priority]
-    );
-    const complaintId = Number(insertRes.rows[0].complaint_id);
-
-    // 2. Insert initial status_history
-    await query(
-      `INSERT INTO status_history (complaint_id, changed_by, old_status, new_status, remarks)
-       VALUES ($1, $2, NULL, 'SUBMITTED', 'Complaint submitted by reporter')`,
-      [complaintId, session.user_id]
-    );
-
-    // 3. Generate dense vector embedding (384-d) and store in complaint_embeddings
-    const fullText = `${title} ${description} ${location_text}`;
-    const vec = generateEmbedding(fullText);
-    const contentHash = crypto.createHash('sha256').update(fullText).digest('hex');
-
-    if (isUsingPostgres()) {
-      const vecStr = toVectorString(vec);
-      await query(
-        `INSERT INTO complaint_embeddings (complaint_id, embedding, model_name, content_hash)
-         VALUES ($1, $2::vector, 'all-MiniLM-L6-v2', $3)`,
-        [complaintId, vecStr, contentHash]
+    // Execute complaint creation atomically within an ACID transaction
+    const complaintId = await withTransaction(async (client) => {
+      // 1. Insert into complaints
+      const insertRes = await client.query(
+        `INSERT INTO complaints (reporter_id, category_id, title, description, location_text, priority, status)
+         VALUES ($1, $2, $3, $4, $5, $6, 'SUBMITTED')
+         RETURNING complaint_id, created_at`,
+        [session.user_id, Number(category_id), title, description, location_text, priority]
       );
-    } else {
-      await query(
-        `INSERT INTO complaint_embeddings (complaint_id, embedding_json, model_name, content_hash)
-         VALUES ($1, $2, 'all-MiniLM-L6-v2', $3)`,
-        [complaintId, JSON.stringify(vec), contentHash]
+      const cId = Number(insertRes.rows[0].complaint_id);
+
+      // 2. Insert initial status_history
+      await client.query(
+        `INSERT INTO status_history (complaint_id, changed_by, old_status, new_status, remarks)
+         VALUES ($1, $2, NULL, 'SUBMITTED', 'Complaint submitted by reporter')`,
+        [cId, session.user_id]
       );
-    }
 
-    // 4. Notify admin users
-    const adminMsg = `New complaint #${complaintId} submitted: ${title}`;
-    await query(
-      `INSERT INTO notifications (user_id, complaint_id, message)
-       SELECT u.user_id, $1, $2
-       FROM users u
-       JOIN roles r ON u.role_id = r.role_id
-       WHERE r.role_name = 'ADMIN'`,
-      [complaintId, adminMsg]
-    );
+      // 3. Generate dense vector embedding (384-d) and store in complaint_embeddings
+      const fullText = `${title} ${description} ${location_text}`;
+      const vec = generateEmbedding(fullText);
+      const contentHash = crypto.createHash('sha256').update(fullText).digest('hex');
 
-    await query('COMMIT');
+      if (isUsingPostgres()) {
+        const vecStr = toVectorString(vec);
+        await client.query(
+          `INSERT INTO complaint_embeddings (complaint_id, embedding, model_name, content_hash)
+           VALUES ($1, $2::vector, 'all-MiniLM-L6-v2', $3)`,
+          [cId, vecStr, contentHash]
+        );
+      } else {
+        await client.query(
+          `INSERT INTO complaint_embeddings (complaint_id, embedding_json, model_name, content_hash)
+           VALUES ($1, $2, 'all-MiniLM-L6-v2', $3)`,
+          [cId, JSON.stringify(vec), contentHash]
+        );
+      }
+
+      // 4. Notify admin users
+      const adminMsg = `New complaint #${cId} submitted: ${title}`;
+      await client.query(
+        `INSERT INTO notifications (user_id, complaint_id, message)
+         SELECT u.user_id, $1, $2
+         FROM users u
+         JOIN roles r ON u.role_id = r.role_id
+         WHERE r.role_name = 'ADMIN'`,
+        [cId, adminMsg]
+      );
+
+      return cId;
+    });
 
     // 5. Get category and department details for live MongoDB document synchronization
     const metaRes = await query(
